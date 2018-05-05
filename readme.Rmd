@@ -1,0 +1,220 @@
+---
+title: "Image Compression Using Principal Component Analysis (PCA) in Python and R"
+author: "Dillon"
+date: "April 30, 2018"
+output: 
+  html_document:
+    theme: paper
+    number_sections: true
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+#runtime: shiny
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Principal Component Analysis (PCA) is a statistical procedure used to reduce the number of features within a dataset. This is often useful if you have a lot of variables within your data that are correlated, or if you need to reduce the size of your dataset. Here, I use PCA to reduce the size of facial images.
+
+## How PCA Works
+
+Principal Component Analysis finds the linear combinations of variables that explain the most variation within the data and and have the lowest reconstruction error. There are multiple principal components and each principal component explains some percentage of the variation within the data. The first principal component always explains the most variation, followed by the second, etc. Generally, you can greatly reduce the size of your data, while still retaining most of its information, by using enough principal components to explain 99% of the variation in your data.
+
+I really like this explanation of PCA from Stack Exchange user amoeba: https://stats.stackexchange.com/questions/2691/making-sense-of-principal-component-analysis-eigenvectors-eigenvalues
+
+You can download my code at [github](https://github.com/dilloncamp/pca) to follow along. I begin this guide with Python and the scikit-learn package and then perform manual PCA in R.
+
+# Python PCA Walkthrough
+
+## Setup
+
+```{r, echo = FALSE, warning= FALSE, results = 'hide', message=FALSE}
+library(shiny)
+library(shinydashboard)
+```
+
+
+
+
+
+I will be performing image compression on these 32x32 images from a MATLAB dataset of 5000 images:
+
+```{r, message = FALSE, echo = FALSE, out.width = "128px", out.height="128px"}
+knitr::include_graphics("img1_orig.png")
+
+knitr::include_graphics("img2_orig.png")
+
+knitr::include_graphics("img3_orig.png")
+```
+
+
+First, I load all relevant packages:
+
+```
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import normalize
+import scipy.io as sio
+import matplotlib.image as image
+import pandas as pd
+import matplotlib.pyplot as plt
+```
+
+## Load Image
+
+```
+#Image is stored in MATLAB dataset
+X = sio.loadmat('ex7faces.mat')
+X = pd.DataFrame(X['X'])
+#Normalize data by subtracting mean and scaling
+X_norm = normalize(X)
+```
+## Run PCA
+
+```
+#Set pca to find principal components that explain 99%
+#of the variation in the data
+pca = PCA(.99)
+#Run PCA on normalized image data
+lower_dimension_data = pca.fit_transform(X_norm)
+#Lower dimension data is 5000x353 instead of 5000x1024
+lower_dimension_data.shape
+```
+
+## Reconstruct Images
+
+```
+#Project lower dimension data onto original features
+approximation = pca.inverse_transform(lower_dimension_data)
+#Approximation is 5000x1024
+approximation.shape
+#Reshape approximation and X_norm to 5000x32x32 to display images
+approximation = approximation.reshape(-1,32,32)
+X_norm = X_norm.reshape(-1,32,32)
+```
+
+## Display Images
+
+The following code displays the original images next to their 99% of variation counterparts. Because of how matplotlib displays images, the pictures are rotated. If you really want to fix this, you can transpose each row of `X_norm` and `approximation` using a `for` loop.
+
+```
+for i in range(0,X_norm.shape[0]):
+    X_norm[i,] = X_norm[i,].T
+    approximation[i,] = approximation[i,].T
+
+
+fig4, axarr = plt.subplots(3,2,figsize=(8,8))
+axarr[0,0].imshow(X_norm[0,],cmap='gray')
+axarr[0,0].set_title('Original Image')
+axarr[0,0].axis('off')
+axarr[0,1].imshow(approximation[0,],cmap='gray')
+axarr[0,1].set_title('99% Variation')
+axarr[0,1].axis('off')
+axarr[1,0].imshow(X_norm[1,],cmap='gray')
+axarr[1,0].set_title('Original Image')
+axarr[1,0].axis('off')
+axarr[1,1].imshow(approximation[1,],cmap='gray')
+axarr[1,1].set_title('99% Variation')
+axarr[1,1].axis('off')
+axarr[2,0].imshow(X_norm[2,],cmap='gray')
+axarr[2,0].set_title('Original Image')
+axarr[2,0].axis('off')
+axarr[2,1].imshow(approximation[2,],cmap='gray')
+axarr[2,1].set_title('99% variation')
+axarr[2,1].axis('off')
+plt.show()
+```
+
+## Results
+
+The following is a shiny web app I created in R to visualize how the facial images change as the number of principal components used to approximate the data changes:
+
+```{r, echo = FALSE, out.width = 800}
+knitr::include_app("https://dilloncamp.shinyapps.io/pcaapp/", 
+  height="550px")
+```
+
+# Manual PCA in R
+
+The following code performs the same PCA image compression in R. Because I was frustrated with the functionality of PCA packages in R, I manually wrote the algorithm for principal component analysis:
+
+## Load Packages
+
+```{r, eval = FALSE}
+library(R.matlab)
+library(stats)
+library(png)
+library(BBmisc)
+library(png)
+```
+
+## Load and Normalize Data
+
+```{r, eval = FALSE}
+data <- readMat("ex7faces.mat")
+data <- data$X
+data_norm <- normalize(data)
+```
+
+## PCA Function
+
+```{r, eval = FALSE}
+pca <- function(x){
+  m <- dim(x)[1]
+  n <- dim(x)[2]
+  sigma <- (1/m) * (t(x) %*% x)
+  s <- svd(sigma)
+  s
+}
+```
+
+## Run PCA
+
+```{r, eval = FALSE}
+b <- pca(data_norm)
+U <- b$u
+S <- diag(b$d)
+
+# Z is equivalent to lower_dimension_data above
+# Z is 5000x353. You can alter the columns of U used
+# to change the number of principal components
+Z <- data_norm %*% U[,1:353]
+# datarec is equivalent to approximation. It is the
+# projection of the reduced data onto the original features
+datarec <- Z %*% t(U[,1:353])
+# Changing the dimensions from 5000x1024 to 5000x32x32 for display
+dim(datarec) <- c(5000,32,32)
+```
+
+## Display Images
+
+```{r, eval = FALSE}
+#Force plot area to be square so images display properly
+par(pty="s",pin=c(1,1))
+image(data[1,,], useRaster=TRUE, axes=FALSE,col=gray((0:32)/32))
+image(datarec[1,,], useRaster=TRUE, axes=FALSE,col=gray((0:32)/32))
+```
+
+## Percent of Variance Explained
+
+The following is R code for determining the cumulative percent of variation that is explained by n principal components:
+
+```{r, eval = FALSE}
+variation <- c()
+for (i in 1:dim(S)[1]){
+  variation[i] <- sum(S[1:i,])/sum(S)
+}
+```
+
+`variation[1]` gives .2486, so the first principal component explains 24.86% of the total variation in the data. `variation[2]` gives .3777. So, the first two principal components explain 37.77% of the total variation in the data.
+
+## Compression Achieved
+
+PCA reduces the 5000 image database from 39.1 Mb to 13.5 Mb, with most of the original image data retained. That's a 65% reduction in size!
+
